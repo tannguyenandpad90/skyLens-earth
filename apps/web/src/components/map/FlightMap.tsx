@@ -1,119 +1,174 @@
 "use client";
 
-import { useCallback, useRef } from "react";
-import Map, { Layer, Source } from "react-map-gl";
-import type { MapRef, ViewStateChangeEvent, MapLayerMouseEvent } from "react-map-gl";
+import { useCallback, useEffect } from "react";
+import Map, { Source } from "react-map-gl";
+import type { MapLayerMouseEvent } from "react-map-gl";
+import type mapboxgl from "mapbox-gl";
+import type { NormalizedFlight } from "@/server/providers/opensky";
 import { useFlights } from "@/hooks/useFlights";
 import { useUIStore } from "@/stores/ui-store";
-import { viewportToBounds } from "@/lib/map-utils";
+import { useMapBounds } from "@/hooks/useMapBounds";
+import { useFlightGeoJSON } from "@/hooks/useFlightGeoJSON";
+import { useFlightTooltip } from "@/hooks/useFlightTooltip";
+import { useAircraftImage } from "@/hooks/useAircraftImage";
+import {
+  ClusterCircleLayer,
+  ClusterCountLayer,
+  FlightIconLayer,
+  FlightLabelLayer,
+} from "./MapLayers";
+import { FlightTooltip } from "./FlightTooltip";
+import { AltitudeLegend } from "./AltitudeLegend";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
 const INITIAL_VIEW = {
-  longitude: 0,
-  latitude: 30,
-  zoom: 2.5,
+  longitude: 10,
+  latitude: 40,
+  zoom: 3,
   pitch: 0,
   bearing: 0,
 };
 
+const INTERACTIVE_LAYERS = ["flight-icons", "cluster-circles"];
+
+// --- Cluster source config ---
+const CLUSTER_OPTIONS = {
+  cluster: true,
+  clusterMaxZoom: 10,
+  clusterRadius: 60,
+  clusterMinPoints: 8,
+} as const;
+
+// --- Component ---
+
 export function FlightMap() {
-  const mapRef = useRef<MapRef>(null);
   const bounds = useUIStore((s) => s.mapBounds);
-  const setMapBounds = useUIStore((s) => s.setMapBounds);
   const selectFlight = useUIStore((s) => s.selectFlight);
+
+  // Hooks
+  const { mapRef, handleMoveEnd, syncBounds } = useMapBounds();
   const { data } = useFlights(bounds);
+  const { imageId, onMapLoad } = useAircraftImage();
+  const { tooltip, handleMouseEnter, handleMouseLeave } = useFlightTooltip(INTERACTIVE_LAYERS);
 
-  const geojson: GeoJSON.FeatureCollection = {
-    type: "FeatureCollection",
-    features:
-      data?.flights.map((f) => ({
-        type: "Feature" as const,
-        geometry: {
-          type: "Point" as const,
-          coordinates: [f.position.longitude, f.position.latitude],
-        },
-        properties: {
-          id: f.id,
-          callsign: f.callsign,
-          altitude: f.position.altitude_ft,
-          heading: f.position.heading ?? 0,
-          onGround: f.position.on_ground,
-        },
-      })) ?? [],
-  };
+  // Normalize FlightPosition[] → NormalizedFlight[] for the GeoJSON hook
+  const flights: NormalizedFlight[] = (data?.flights ?? []).map((f) => ({
+    id: f.id,
+    lat: f.position.latitude,
+    lon: f.position.longitude,
+    altitudeFt: f.position.altitude_ft ?? undefined,
+    groundSpeedKt: f.position.speed_kts ?? undefined,
+    headingDeg: f.position.heading ?? undefined,
+    callsign: f.callsign ?? undefined,
+    originIata: f.origin?.icao ?? undefined,
+    destinationIata: f.destination?.icao ?? undefined,
+    timestamp: data?.updated_at ?? new Date().toISOString(),
+  }));
 
-  const handleMoveEnd = useCallback(
-    (evt: ViewStateChangeEvent) => {
-      const map = mapRef.current?.getMap();
-      if (!map) return;
-      const b = map.getBounds();
-      if (!b) return;
-      setMapBounds(
-        viewportToBounds([
-          [b.getWest(), b.getSouth()],
-          [b.getEast(), b.getNorth()],
-        ]),
-      );
-    },
-    [setMapBounds],
-  );
+  const geojson = useFlightGeoJSON(flights);
 
+  // Load aircraft icon once map is ready
+  useEffect(() => {
+    onMapLoad(mapRef.current);
+  }, [onMapLoad, mapRef]);
+
+  // Handle map load — sync bounds on first render
+  const handleLoad = useCallback(() => {
+    onMapLoad(mapRef.current);
+    syncBounds();
+  }, [onMapLoad, mapRef, syncBounds]);
+
+  // Click handler — select individual flights or expand clusters
   const handleClick = useCallback(
     (evt: MapLayerMouseEvent) => {
       const feature = evt.features?.[0];
-      if (feature?.properties?.id) {
+      if (!feature) {
+        selectFlight(null);
+        return;
+      }
+
+      // Click on cluster → zoom into it
+      if (feature.properties?.cluster) {
+        const map = mapRef.current?.getMap();
+        if (!map) return;
+        const source = map.getSource("flights") as mapboxgl.GeoJSONSource | undefined;
+        if (!source) return;
+
+        const clusterId = feature.properties.cluster_id as number;
+        source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+          if (err || zoom == null) return;
+          const coords = (feature.geometry as GeoJSON.Point).coordinates;
+          map.easeTo({
+            center: [coords[0]!, coords[1]!],
+            zoom: zoom + 1,
+            duration: 500,
+          });
+        });
+        return;
+      }
+
+      // Click on individual flight
+      if (feature.properties?.id) {
         selectFlight(feature.properties.id as string);
       } else {
         selectFlight(null);
       }
     },
-    [selectFlight],
+    [selectFlight, mapRef],
   );
 
   return (
-    <Map
-      ref={mapRef}
-      initialViewState={INITIAL_VIEW}
-      style={{ width: "100%", height: "100%" }}
-      mapStyle="mapbox://styles/mapbox/dark-v11"
-      mapboxAccessToken={MAPBOX_TOKEN}
-      onMoveEnd={handleMoveEnd}
-      onClick={handleClick}
-      interactiveLayerIds={["flights-layer"]}
-    >
-      <Source id="flights" type="geojson" data={geojson}>
-        <Layer
-          id="flights-layer"
-          type="circle"
-          paint={{
-            "circle-radius": [
-              "interpolate",
-              ["linear"],
-              ["zoom"],
-              2, 2,
-              5, 4,
-              10, 8,
-            ],
-            "circle-color": [
-              "case",
-              ["get", "onGround"],
-              "#64748b",
-              [
-                "interpolate",
-                ["linear"],
-                ["coalesce", ["get", "altitude"], 0],
-                0, "#22d3ee",
-                15000, "#3b82f6",
-                35000, "#a78bfa",
-                45000, "#f472b6",
-              ],
-            ],
-            "circle-opacity": 0.85,
-          }}
-        />
-      </Source>
-    </Map>
+    <div className="relative h-full w-full">
+      <Map
+        ref={mapRef}
+        initialViewState={INITIAL_VIEW}
+        style={{ width: "100%", height: "100%" }}
+        mapStyle="mapbox://styles/mapbox/dark-v11"
+        mapboxAccessToken={MAPBOX_TOKEN}
+        onLoad={handleLoad}
+        onMoveEnd={handleMoveEnd}
+        onClick={handleClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        interactiveLayerIds={INTERACTIVE_LAYERS}
+        attributionControl={false}
+        reuseMaps
+      >
+        <Source
+          id="flights"
+          type="geojson"
+          data={geojson}
+          {...CLUSTER_OPTIONS}
+        >
+          {/* Render order: bottom → top */}
+          <ClusterCircleLayer />
+          <ClusterCountLayer />
+          <FlightIconLayer imageId={imageId} />
+          <FlightLabelLayer />
+        </Source>
+      </Map>
+
+      {/* Tooltip overlay */}
+      {tooltip && <FlightTooltip data={tooltip} />}
+
+      {/* Altitude legend */}
+      <AltitudeLegend />
+
+      {/* Flight count badge */}
+      <div className="absolute bottom-6 left-4 z-10 rounded-full border border-slate-800 bg-slate-900/90 px-3 py-1 text-xs text-slate-400 backdrop-blur-sm">
+        {flights.length > 0 ? (
+          <>
+            <span className="font-mono font-bold text-slate-200">
+              {flights.length.toLocaleString()}
+            </span>{" "}
+            flights in view
+          </>
+        ) : (
+          "Loading flights..."
+        )}
+      </div>
+    </div>
   );
 }

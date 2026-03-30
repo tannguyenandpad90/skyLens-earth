@@ -1,3 +1,4 @@
+import type { FlightPosition } from "@skylens/types";
 import type { FlightDataProvider } from "../providers/provider.interface";
 import { AviationStackProvider } from "../providers/aviation-stack";
 import { OpenSkyProvider } from "../providers/opensky";
@@ -86,12 +87,12 @@ async function poll(): Promise<void> {
   }
 }
 
-async function computeAndCacheStats(flights: typeof Array.prototype & { origin?: { icao: string }; destination?: { icao: string } }[]): Promise<void> {
+async function computeAndCacheStats(flights: FlightPosition[]): Promise<void> {
   // Count per airport
   const airportCounts = new Map<string, { name: string; count: number }>();
   const routeCounts = new Map<string, { origin: string; destination: string; count: number }>();
 
-  for (const f of flights as Array<{ origin?: { icao: string; name: string } | null; destination?: { icao: string; name: string } | null }>) {
+  for (const f of flights) {
     if (f.origin?.icao) {
       const entry = airportCounts.get(f.origin.icao) ?? { name: f.origin.name, count: 0 };
       entry.count++;
