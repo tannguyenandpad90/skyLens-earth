@@ -10,6 +10,8 @@ import { detectAnomalies } from "../services/anomaly.service";
 let provider: FlightDataProvider;
 let failureCount = 0;
 let pollCount = 0;
+let polling = false;
+let pgWriteFailures = 0;
 
 function getProvider(): FlightDataProvider {
   if (!provider) {
@@ -29,6 +31,9 @@ function getProvider(): FlightDataProvider {
 }
 
 async function poll(): Promise<void> {
+  // Prevent overlapping polls if a previous one is still running
+  if (polling) return;
+  polling = true;
   try {
     // Skip if data is still fresh (prevents double-fetch on restart)
     const lastUpdate = await redis.get(REDIS_KEYS.FLIGHTS_UPDATED_AT);
@@ -67,7 +72,14 @@ async function poll(): Promise<void> {
         })),
         skipDuplicates: true,
       })
-      .catch((err) => console.error("[poller] Postgres write failed:", err));
+      .then(() => { pgWriteFailures = 0; })
+      .catch((err) => {
+        pgWriteFailures++;
+        console.error(`[poller] Postgres write failed (${pgWriteFailures} consecutive):`, err);
+        if (pgWriteFailures >= 10) {
+          console.error("[poller] CRITICAL: Postgres writes failing persistently. Check connection/schema.");
+        }
+      });
 
     failureCount = 0;
     pollCount++;
@@ -84,6 +96,8 @@ async function poll(): Promise<void> {
     if (failureCount >= 3) {
       await redis.set(REDIS_KEYS.FLIGHTS_STALE, "true");
     }
+  } finally {
+    polling = false;
   }
 }
 

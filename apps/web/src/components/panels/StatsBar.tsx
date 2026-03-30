@@ -7,7 +7,7 @@ import { Skeleton } from "@skylens/ui";
 export function StatsBar() {
   const region = useUIStore((s) => s.region);
   const toggleAIPanel = useUIStore((s) => s.toggleAIPanel);
-  const { data, isLoading } = useStats(region);
+  const { data, isLoading, isError } = useStats(region);
 
   return (
     <div className="panel flex items-center gap-6 px-4 py-2">
@@ -17,6 +17,10 @@ export function StatsBar() {
           <Skeleton className="h-8 w-32" />
           <Skeleton className="h-8 w-40" />
         </>
+      ) : isError ? (
+        <div className="text-sm text-slate-500">
+          Stats unavailable
+        </div>
       ) : data ? (
         <>
           <div>

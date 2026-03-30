@@ -1,9 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { FlightDetail } from "@skylens/types";
 import { formatAltitude, formatSpeed, formatHeading } from "@skylens/lib";
-import { Skeleton, Spinner } from "@skylens/ui";
+import { Skeleton, Spinner, ErrorMessage } from "@skylens/ui";
 import { useFlightExplain } from "@/hooks/useAISummary";
 import { useUIStore } from "@/stores/ui-store";
 import { api } from "@/lib/api-client";
@@ -16,7 +17,13 @@ export function FlightDetailPanel({ flightId }: Props) {
   const selectFlight = useUIStore((s) => s.selectFlight);
   const explain = useFlightExplain();
 
-  const { data, isLoading } = useQuery({
+  // Reset explanation when switching flights
+  useEffect(() => {
+    explain.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flightId]);
+
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["flight", flightId],
     queryFn: () => api.get<{ flight: FlightDetail }>(`/api/flights/${flightId}`),
   });
@@ -42,6 +49,10 @@ export function FlightDetailPanel({ flightId }: Props) {
           <Skeleton className="h-6 w-40" />
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-3/4" />
+        </div>
+      ) : isError ? (
+        <div className="p-4">
+          <ErrorMessage message="Failed to load flight details." />
         </div>
       ) : flight ? (
         <div className="flex-1 space-y-4 p-4">
@@ -93,6 +104,11 @@ export function FlightDetailPanel({ flightId }: Props) {
               <div className="prose prose-sm prose-invert">
                 <p>{explain.data.explanation}</p>
               </div>
+            ) : explain.isError ? (
+              <ErrorMessage
+                message="Failed to generate explanation."
+                onRetry={() => explain.mutate(flightId)}
+              />
             ) : (
               <button
                 onClick={() => explain.mutate(flightId)}

@@ -17,6 +17,8 @@ export interface FlightTooltipData {
 /**
  * Manages hover state for flight tooltips.
  * Returns the tooltip data and Mapbox event handlers to wire up.
+ *
+ * Only shows tooltip for individual flights, not clusters.
  */
 export function useFlightTooltip(interactiveLayerIds: string[]) {
   const [tooltip, setTooltip] = useState<FlightTooltipData | null>(null);
@@ -26,21 +28,28 @@ export function useFlightTooltip(interactiveLayerIds: string[]) {
       const feature = evt.features?.[0];
       if (!feature?.properties) return;
 
+      // Skip clusters — they don't have flight-level properties
+      if (feature.properties.cluster) {
+        evt.target.getCanvas().style.cursor = "pointer";
+        return;
+      }
+
+      // Skip if this isn't an individual flight (no id property)
+      if (!feature.properties.id) return;
+
       const p = feature.properties;
       setTooltip({
         x: evt.point.x,
         y: evt.point.y,
-        callsign: p.callsign as string,
-        altitudeFt: p.altitudeFt as number,
-        groundSpeedKt: p.groundSpeedKt as number,
-        headingDeg: p.headingDeg as number,
-        originIata: p.originIata as string,
-        destinationIata: p.destinationIata as string,
+        callsign: (p.callsign as string) || "",
+        altitudeFt: (p.altitudeFt as number) || 0,
+        groundSpeedKt: (p.groundSpeedKt as number) || 0,
+        headingDeg: (p.headingDeg as number) || 0,
+        originIata: (p.originIata as string) || "",
+        destinationIata: (p.destinationIata as string) || "",
       });
 
-      // Change cursor
-      const canvas = evt.target.getCanvas();
-      canvas.style.cursor = "pointer";
+      evt.target.getCanvas().style.cursor = "pointer";
     },
     [],
   );
@@ -48,8 +57,7 @@ export function useFlightTooltip(interactiveLayerIds: string[]) {
   const handleMouseLeave = useCallback(
     (evt: MapLayerMouseEvent) => {
       setTooltip(null);
-      const canvas = evt.target.getCanvas();
-      canvas.style.cursor = "";
+      evt.target.getCanvas().style.cursor = "";
     },
     [],
   );

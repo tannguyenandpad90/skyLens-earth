@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import Map, { Source } from "react-map-gl";
 import type { MapLayerMouseEvent } from "react-map-gl";
 import type mapboxgl from "mapbox-gl";
@@ -53,19 +53,24 @@ export function FlightMap() {
   const { imageId, onMapLoad } = useAircraftImage();
   const { tooltip, handleMouseEnter, handleMouseLeave } = useFlightTooltip(INTERACTIVE_LAYERS);
 
-  // Normalize FlightPosition[] → NormalizedFlight[] for the GeoJSON hook
-  const flights: NormalizedFlight[] = (data?.flights ?? []).map((f) => ({
-    id: f.id,
-    lat: f.position.latitude,
-    lon: f.position.longitude,
-    altitudeFt: f.position.altitude_ft ?? undefined,
-    groundSpeedKt: f.position.speed_kts ?? undefined,
-    headingDeg: f.position.heading ?? undefined,
-    callsign: f.callsign ?? undefined,
-    originIata: f.origin?.icao ?? undefined,
-    destinationIata: f.destination?.icao ?? undefined,
-    timestamp: data?.updated_at ?? new Date().toISOString(),
-  }));
+  // Normalize FlightPosition[] → NormalizedFlight[] for the GeoJSON hook.
+  // Memoized to prevent re-creating the array on every render (tooltip, click, etc).
+  const flights: NormalizedFlight[] = useMemo(() => {
+    const src = data?.flights ?? [];
+    const ts = data?.updated_at ?? new Date().toISOString();
+    return src.map((f) => ({
+      id: f.id,
+      lat: f.position.latitude,
+      lon: f.position.longitude,
+      altitudeFt: f.position.altitude_ft ?? undefined,
+      groundSpeedKt: f.position.speed_kts ?? undefined,
+      headingDeg: f.position.heading ?? undefined,
+      callsign: f.callsign ?? undefined,
+      originIata: f.origin?.icao ?? undefined,
+      destinationIata: f.destination?.icao ?? undefined,
+      timestamp: ts,
+    }));
+  }, [data]);
 
   const geojson = useFlightGeoJSON(flights);
 
