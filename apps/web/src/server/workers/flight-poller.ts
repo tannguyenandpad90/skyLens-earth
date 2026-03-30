@@ -1,5 +1,6 @@
 import type { FlightDataProvider } from "../providers/provider.interface";
 import { AviationStackProvider } from "../providers/aviation-stack";
+import { OpenSkyProvider } from "../providers/opensky";
 import { redis } from "../db/redis";
 import { prisma } from "../db/prisma";
 import { REDIS_KEYS, CACHE_TTL, POLL_INTERVAL_MS } from "@skylens/lib";
@@ -12,7 +13,15 @@ let pollCount = 0;
 function getProvider(): FlightDataProvider {
   if (!provider) {
     const apiKey = process.env.AVIATIONSTACK_API_KEY;
-    if (!apiKey) throw new Error("AVIATIONSTACK_API_KEY is not set");
+    if (!apiKey) {
+      // Fall back to OpenSky (free, no key required)
+      console.log("[poller] No AVIATIONSTACK_API_KEY — using OpenSky Network");
+      provider = new OpenSkyProvider({
+        username: process.env.OPENSKY_USERNAME,
+        password: process.env.OPENSKY_PASSWORD,
+      });
+      return provider;
+    }
     provider = new AviationStackProvider(apiKey);
   }
   return provider;
