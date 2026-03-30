@@ -1,0 +1,34 @@
+{
+  "name": "skylens-earth",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "yarn workspace @skylens/web dev",
+    "build": "yarn workspaces foreach -A --topological run build",
+    "lint": "yarn workspaces foreach -A run lint",
+    "typecheck": "yarn workspaces foreach -A run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md}\"",
+    "db:generate": "yarn workspace @skylens/web prisma generate",
+    "db:push": "yarn workspace @skylens/web prisma db push",
+    "db:migrate": "yarn workspace @skylens/web prisma migrate dev",
+    "db:seed": "yarn workspace @skylens/web prisma db seed",
+    "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/.next"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5",
+    "prisma": "6.19.2",
+    "typescript": "^5.4.5"
+  },
+  "packageManager": "yarn@4.1.1+sha512.ec40d0639bb307441b945d9467139cbb88d14394baac760b52eca038b330d16542d66fef61574271534ace5a200518dabf3b53a85f1f9e4bfa37141b538a9590",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@prisma/client": "6.19.2"
+  }
+}

@@ -1,0 +1,76 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Airport {
+  icaoCode    String  @id @map("icao_code") @db.VarChar(4)
+  iataCode    String? @map("iata_code") @db.VarChar(3)
+  name        String  @db.VarChar(255)
+  city        String? @db.VarChar(128)
+  country     String? @db.VarChar(64)
+  latitude    Float
+  longitude   Float
+  timezone    String? @db.VarChar(64)
+  elevationFt Int?    @map("elevation_ft")
+
+  @@map("airports")
+}
+
+model FlightSnapshot {
+  id          BigInt   @id @default(autoincrement())
+  flightId    String   @map("flight_id") @db.VarChar(32)
+  callsign    String?  @db.VarChar(16)
+  airlineIcao String?  @map("airline_icao") @db.VarChar(4)
+  aircraftIcao String? @map("aircraft_icao") @db.VarChar(8)
+  originIcao  String?  @map("origin_icao") @db.VarChar(4)
+  destIcao    String?  @map("dest_icao") @db.VarChar(4)
+  latitude    Float
+  longitude   Float
+  altitudeFt  Int?     @map("altitude_ft")
+  heading     Int?     @db.SmallInt
+  speedKts    Int?     @map("speed_kts")
+  verticalRate Int?    @map("vertical_rate")
+  onGround    Boolean  @default(false) @map("on_ground")
+  squawk      String?  @db.VarChar(4)
+  status      String?  @db.VarChar(32)
+  capturedAt  DateTime @default(now()) @map("captured_at") @db.Timestamptz()
+
+  @@index([flightId])
+  @@index([capturedAt])
+  @@index([originIcao])
+  @@index([destIcao])
+  @@map("flight_snapshots")
+}
+
+model HourlyStat {
+  id            Int      @id @default(autoincrement())
+  airportIcao   String   @map("airport_icao") @db.VarChar(4)
+  hourUtc       Int      @map("hour_utc") @db.SmallInt
+  dayOfWeek     Int      @map("day_of_week") @db.SmallInt
+  avgFlights    Float    @map("avg_flights")
+  stddevFlights Float    @map("stddev_flights")
+  sampleCount   Int      @map("sample_count")
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz()
+
+  @@unique([airportIcao, hourUtc, dayOfWeek])
+  @@map("hourly_stats")
+}
+
+model AiResponse {
+  id           Int      @id @default(autoincrement())
+  requestType  String   @map("request_type") @db.VarChar(32)
+  promptHash   String   @map("prompt_hash") @db.VarChar(64)
+  inputTokens  Int?     @map("input_tokens")
+  outputTokens Int?     @map("output_tokens")
+  model        String?  @db.VarChar(64)
+  responseText String?  @map("response_text")
+  latencyMs    Int?     @map("latency_ms")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("ai_responses")
+}
